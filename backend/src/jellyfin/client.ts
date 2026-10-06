@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import type { JellyfinSession, JellyfinSystemInfo, SessionView } from './types.js';
+import { sessionCapabilities } from './capabilities.js';
 
 export class JellyfinError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -47,12 +48,7 @@ export const jellyfin = {
         deviceName: session.DeviceName || 'Unnamed device',
         client: session.Client || 'Unknown app',
         userName: session.UserName || 'Unknown user',
-        canControl: session.IsActive !== false && session.SupportsRemoteControl === true && session.SupportsMediaControl === true,
-        canSeek: session.PlayState?.CanSeek === true,
-        canSetVolume: session.SupportedCommands?.includes('SetVolume') === true,
-        canMute: session.PlayState?.IsMuted === true
-          ? session.SupportedCommands?.includes('Unmute') === true || session.SupportedCommands?.includes('ToggleMute') === true
-          : session.SupportedCommands?.includes('Mute') === true || session.SupportedCommands?.includes('ToggleMute') === true,
+        ...sessionCapabilities(session),
         isActive: session.IsActive !== false,
         lastActivityDate: session.LastActivityDate || null,
         playback: item ? {

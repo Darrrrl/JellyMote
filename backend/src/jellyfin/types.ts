@@ -45,6 +45,11 @@ export interface SessionView {
   client: string;
   userName: string;
   canControl: boolean;
+  supportsRemoteControl: boolean | null;
+  supportsMediaControl: boolean | null;
+  supportedCommands: string[];
+  canStartPlayback: boolean;
+  playstate: Record<'play' | 'pause' | 'stop' | 'next' | 'previous', boolean>;
   canSeek: boolean;
   canSetVolume: boolean;
   canMute: boolean;

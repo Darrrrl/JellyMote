@@ -3,6 +3,7 @@ import { ArrowLeft, Cast, ChevronRight, Film, Play, Search } from 'lucide-react'
 import { api } from '../services/api';
 import type { LibraryHome, MediaItem } from '../types/library';
 import type { Session } from '../types/jellyfin';
+import { deviceDiagnostic } from '../utils/deviceCapabilities';
 
 type View =
   | { kind: 'home' }
@@ -91,8 +92,8 @@ export function Library({ selected, disconnected, onChooseDevice, onPlaying }: P
       setPlayError(disconnected ? 'Selected playback device disconnected.' : 'Choose a playback device first.');
       return;
     }
-    if (!selected.canControl) {
-      setPlayError('This device does not support remote playback.');
+    if (!selected.canStartPlayback) {
+      setPlayError(selected.isActive ? "This Jellyfin client isn't advertising remote playback control." : deviceDiagnostic(selected));
       return;
     }
     setPlayingId(item.id);

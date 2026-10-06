@@ -3,6 +3,7 @@ import { Cast, ChevronRight, Music2, Pause, Play, SkipBack, SkipForward, Square,
 import { api, type PlaystateAction } from '../services/api';
 import type { Playback, Session } from '../types/jellyfin';
 import { formatSeconds, secondsToTicks, ticksToSeconds } from '../utils/time';
+import { deviceDiagnostic } from '../utils/deviceCapabilities';
 
 type Override = { sessionId: string; itemId: string | null; patch: Partial<Playback>; at: number };
 interface Props { session: Session | null; updatedAt: number; unavailable: boolean; onRefresh: () => Promise<void>; onChooseDevice: () => void }
@@ -23,7 +24,7 @@ export function NowPlaying({ session, updatedAt, unavailable, onRefresh, onChoos
   const volumeTimer = useRef<number | null>(null);
   const sending = useRef(false);
   const currentTarget = useRef<{ id: string | null; available: boolean }>({ id: null, available: false });
-  currentTarget.current = { id: session?.id || null, available: Boolean(session?.playback && session.canControl && !unavailable) };
+  currentTarget.current = { id: session?.id || null, available: Boolean(session?.playback && session.isActive && !unavailable) };
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
@@ -51,7 +52,7 @@ export function NowPlaying({ session, updatedAt, unavailable, onRefresh, onChoos
   const baseAt = activeOverride && ('positionTicks' in activeOverride.patch || 'isPaused' in activeOverride.patch) ? activeOverride.at : updatedAt;
   const positionSeconds = state ? Math.min(durationSeconds || Infinity, Math.max(0, basePosition + (state.isPaused ? 0 : Math.min(4, Math.max(0, now - baseAt) / 1000)))) : 0;
   const shownPosition = seekDraft ?? positionSeconds;
-  const controlsDisabled = !session?.canControl || unavailable || busy !== null;
+  const controlsDisabled = !session?.isActive || unavailable || busy !== null;
   const canSeek = !controlsDisabled && session?.canSeek === true && durationSeconds > 0;
   const canVolume = !controlsDisabled && session?.canSetVolume === true;
   const canMute = !controlsDisabled && session?.canMute === true;
@@ -81,7 +82,7 @@ export function NowPlaying({ session, updatedAt, unavailable, onRefresh, onChoos
   }
 
   function playstate(command: PlaystateAction) {
-    if (!session || !playing || controlsDisabled) return;
+    if (!session || !playing || controlsDisabled || !session.playstate[command]) return;
     const patch = command === 'pause' ? { isPaused: true, positionTicks: secondsToTicks(positionSeconds) }
       : command === 'play' ? { isPaused: false, positionTicks: secondsToTicks(positionSeconds) } : undefined;
     void send(command, () => api.playstate(session.id, command), patch);
@@ -133,7 +134,7 @@ export function NowPlaying({ session, updatedAt, unavailable, onRefresh, onChoos
   }
 
   if (!session) return <div className="empty-hero"><Cast size={35} /><h2>Choose a device</h2><p>Select an active Jellyfin session to see what’s playing.</p></div>;
-  if (!state) return <div className="empty-hero"><Music2 size={35} /><h2>Ready when you are</h2><p>Nothing is playing on {session.deviceName} right now.</p></div>;
+  if (!state) return <div className="empty-hero"><Music2 size={35} /><h2>Ready when you are</h2><p>Nothing is playing on {session.deviceName} right now.</p>{!session.canStartPlayback && <p>{session.isActive ? "This Jellyfin client isn't advertising remote playback control." : deviceDiagnostic(session)}</p>}</div>;
 
   const episodeParts = state.type === 'Episode' ? state.subtitle?.split(' · ') || [] : [];
   const mediaTitle = episodeParts.length >= 3 ? episodeParts.slice(2).join(' · ') : state.title;
@@ -145,10 +146,10 @@ export function NowPlaying({ session, updatedAt, unavailable, onRefresh, onChoos
     <div className="transport">
       <input className="seek-slider" type="range" min={0} max={Math.max(1, Math.floor(durationSeconds))} step={1} value={Math.min(Math.floor(durationSeconds || 1), Math.round(shownPosition))} style={{ '--progress': `${durationSeconds ? (shownPosition / durationSeconds) * 100 : 0}%` } as React.CSSProperties} aria-label="Seek position" disabled={!canSeek} onPointerDown={() => { draggingSeek.current = true; }} onPointerUp={() => commitSeek(seekDraftRef.current)} onPointerCancel={() => { draggingSeek.current = false; seekDraftRef.current = null; setSeekDraft(null); }} onChange={event => updateSeek(Number(event.target.value))} onKeyUp={() => commitSeek(seekDraftRef.current)} />
       <div className="time-row"><span>{formatSeconds(shownPosition)}</span><span>{formatSeconds(durationSeconds)}</span></div>
-      <div className="control-row"><button type="button" className="control-button" title="Previous" aria-label="Previous" disabled={controlsDisabled} onClick={() => playstate('previous')}><SkipBack size={22} fill="currentColor" /></button><button type="button" className="control-button" title="Back 10 seconds" aria-label="Back 10 seconds" disabled={!canSeek} onClick={() => skip(-10)}><RotateCcw size={24} /><span className="skip-label">10</span></button><button type="button" className="control-button primary-control" title={state.isPaused ? 'Play' : 'Pause'} aria-label={state.isPaused ? 'Play' : 'Pause'} disabled={controlsDisabled} onClick={() => playstate(state.isPaused ? 'play' : 'pause')}>{state.isPaused ? <Play size={30} fill="currentColor" /> : <Pause size={30} fill="currentColor" />}</button><button type="button" className="control-button" title="Forward 10 seconds" aria-label="Forward 10 seconds" disabled={!canSeek} onClick={() => skip(10)}><RotateCw size={24} /><span className="skip-label">10</span></button><button type="button" className="control-button" title="Next" aria-label="Next" disabled={controlsDisabled} onClick={() => playstate('next')}><SkipForward size={22} fill="currentColor" /></button></div>
-      <div className="secondary-controls"><div className="volume-controls glass"><button type="button" className="small-control" title={state.isMuted ? 'Unmute' : 'Mute'} aria-label={state.isMuted ? 'Unmute' : 'Mute'} disabled={!canMute} onClick={() => { if (session) void send('mute', () => api.mute(session.id, !state.isMuted), { isMuted: !state.isMuted }); }}>{state.isMuted || (volumeDraft ?? state.volume) === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}</button><input className="volume-slider" type="range" min={0} max={100} step={1} value={volumeDraft ?? state.volume ?? 50} aria-label="Volume" disabled={!canVolume} onPointerDown={() => { draggingVolume.current = true; }} onPointerUp={() => commitVolume(volumeDraftRef.current)} onPointerCancel={() => { draggingVolume.current = false; volumeDraftRef.current = null; setVolumeDraft(null); }} onChange={event => updateVolume(Number(event.target.value))} onKeyUp={() => commitVolume(volumeDraftRef.current)} /><span className="volume-value">{volumeDraft ?? state.volume ?? '—'}{state.volume !== null ? '%' : ''}</span></div><button type="button" className="stop-button" disabled={controlsDisabled} onClick={() => playstate('stop')}><Square size={14} fill="currentColor" /> Stop</button></div>
+      <div className="control-row"><button type="button" className="control-button" title="Previous" aria-label="Previous" disabled={controlsDisabled || !session.playstate.previous} onClick={() => playstate('previous')}><SkipBack size={22} fill="currentColor" /></button><button type="button" className="control-button" title="Back 10 seconds" aria-label="Back 10 seconds" disabled={!canSeek} onClick={() => skip(-10)}><RotateCcw size={24} /><span className="skip-label">10</span></button><button type="button" className="control-button primary-control" title={state.isPaused ? 'Play' : 'Pause'} aria-label={state.isPaused ? 'Play' : 'Pause'} disabled={controlsDisabled || !session.playstate[state.isPaused ? 'play' : 'pause']} onClick={() => playstate(state.isPaused ? 'play' : 'pause')}>{state.isPaused ? <Play size={30} fill="currentColor" /> : <Pause size={30} fill="currentColor" />}</button><button type="button" className="control-button" title="Forward 10 seconds" aria-label="Forward 10 seconds" disabled={!canSeek} onClick={() => skip(10)}><RotateCw size={24} /><span className="skip-label">10</span></button><button type="button" className="control-button" title="Next" aria-label="Next" disabled={controlsDisabled || !session.playstate.next} onClick={() => playstate('next')}><SkipForward size={22} fill="currentColor" /></button></div>
+      <div className="secondary-controls"><div className="volume-controls glass"><button type="button" className="small-control" title={state.isMuted ? 'Unmute' : 'Mute'} aria-label={state.isMuted ? 'Unmute' : 'Mute'} disabled={!canMute} onClick={() => { if (session) void send('mute', () => api.mute(session.id, !state.isMuted), { isMuted: !state.isMuted }); }}>{state.isMuted || (volumeDraft ?? state.volume) === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}</button><input className="volume-slider" type="range" min={0} max={100} step={1} value={volumeDraft ?? state.volume ?? 50} aria-label="Volume" disabled={!canVolume} onPointerDown={() => { draggingVolume.current = true; }} onPointerUp={() => commitVolume(volumeDraftRef.current)} onPointerCancel={() => { draggingVolume.current = false; volumeDraftRef.current = null; setVolumeDraft(null); }} onChange={event => updateVolume(Number(event.target.value))} onKeyUp={() => commitVolume(volumeDraftRef.current)} /><span className="volume-value">{volumeDraft ?? state.volume ?? '—'}{state.volume !== null ? '%' : ''}</span></div><button type="button" className="stop-button" disabled={controlsDisabled || !session.playstate.stop} onClick={() => playstate('stop')}><Square size={14} fill="currentColor" /> Stop</button></div>
       <button className="playing-target glass" type="button" onClick={onChooseDevice} aria-label={`Change playback device, currently ${session.deviceName}`}><Cast size={19} /><span><small>Playing on</small><strong>{session.deviceName}</strong></span><ChevronRight size={18} /></button>
-      <div className="control-feedback" aria-live="polite">{error ? <span className="command-error">{error}</span> : busy ? <span>Sending {busy}…</span> : unavailable ? <span>Jellyfin is unavailable</span> : !session.canControl ? <span>This device is view only</span> : null}</div>
+      <div className="control-feedback" aria-live="polite">{error ? <span className="command-error">{error}</span> : busy ? <span>Sending {busy}…</span> : unavailable ? <span>Jellyfin is unavailable</span> : !session.canControl ? <span>{deviceDiagnostic(session)}</span> : null}</div>
     </div></div>
   </div>;
 }
