@@ -1,0 +1,11 @@
+services:
+  jellymote:
+    build: .
+    restart: unless-stopped
+    environment:
+      JELLYFIN_URL: ${JELLYFIN_URL:?Set JELLYFIN_URL in .env}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:?Set JELLYFIN_API_KEY in .env}
+      JELLYFIN_LIBRARY_USER_NAME: ${JELLYFIN_LIBRARY_USER_NAME:-}
+      PORT: 3000
+    ports:
+      - "${APP_PORT:-3000}:3000"
