@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import { JellyfinError } from './client.js';
+import { jellyfinHeaders } from './headers.js';
 
 interface RawItem {
   Id?: string; Name?: string; Type?: string; CollectionType?: string; ProductionYear?: number; Overview?: string;
@@ -13,7 +14,7 @@ interface QueryResult { Items?: RawItem[]; TotalRecordCount?: number }
 
 async function get<T>(path: string): Promise<T> {
   let response: Response;
-  try { response = await fetch(`${config.jellyfinUrl}${path}`, { headers: { 'X-Emby-Token': config.apiKey, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) }); }
+  try { response = await fetch(`${config.jellyfinUrl}${path}`, { headers: jellyfinHeaders(), signal: AbortSignal.timeout(8000) }); }
   catch { throw new JellyfinError(502, 'Jellyfin is unavailable.'); }
   if (response.status === 404) throw new JellyfinError(404, 'Library item was not found.');
   if (!response.ok) throw new JellyfinError(502, `Jellyfin library request failed (HTTP ${response.status}).`);

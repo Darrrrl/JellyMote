@@ -1,6 +1,7 @@
 import { config } from '../config/index.js';
 import type { JellyfinSession, JellyfinSystemInfo, SessionView } from './types.js';
 import { sessionCapabilities } from './capabilities.js';
+import { jellyfinHeaders } from './headers.js';
 
 export class JellyfinError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -10,7 +11,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${config.jellyfinUrl}${path}`, {
-      headers: { 'X-Emby-Token': config.apiKey, Accept: 'application/json' },
+      headers: jellyfinHeaders(),
       ...init,
       signal: AbortSignal.timeout(8000),
     });
@@ -76,7 +77,7 @@ export const jellyfin = {
   sendGeneral: (sessionId: string, name: 'SetVolume' | 'Mute' | 'Unmute' | 'ToggleMute', args?: Record<string, string>) =>
     request<void>(`/Sessions/${encodeURIComponent(sessionId)}/Command`, {
       method: 'POST',
-      headers: { 'X-Emby-Token': config.apiKey, Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: jellyfinHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ Name: name, Arguments: args || {} }),
     }),
 };
@@ -84,7 +85,7 @@ export const jellyfin = {
 export async function getImage(id: string, type: 'Primary' | 'Thumb' | 'Backdrop'): Promise<Response> {
   try {
     return await fetch(`${config.jellyfinUrl}/Items/${id}/Images/Primary?maxWidth=720&maxHeight=720&quality=85`, {
-      headers: { 'X-Emby-Token': config.apiKey },
+      headers: jellyfinHeaders(),
       signal: AbortSignal.timeout(8000),
     });
   } catch {
